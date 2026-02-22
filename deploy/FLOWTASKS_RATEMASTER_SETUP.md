@@ -90,3 +90,22 @@ docker compose up -d
 
 - https://ratemaster.flowtasks.io
 - https://flow.flowtasks.io (and other sites)
+
+---
+
+## Deploy updates (after code changes)
+
+From your dev machine, push to GitHub:
+```bash
+git add -A && git commit -m "Your message" && git push origin main
+```
+
+On the VPS:
+```bash
+cd ~/ratemaster
+chmod +x deploy.sh   # first time only
+./deploy.sh
+# Or manually:
+git pull origin main
+docker compose up --build -d
+```

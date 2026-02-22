@@ -32,7 +32,9 @@ docker compose up --build -d
 ```
 
 For VPS deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).  
-For subdomain setup (e.g. ratemaster.flowtasks.io with Nginx + Cloudflare), see [deploy/DEPLOY_SUBDOMAIN.md](deploy/DEPLOY_SUBDOMAIN.md).
+For subdomain setup (e.g. ratemaster.flowtasks.io with flowtasks nginx), see [deploy/FLOWTASKS_RATEMASTER_SETUP.md](deploy/FLOWTASKS_RATEMASTER_SETUP.md).
+
+**Deploy updates on VPS:** `cd ~/ratemaster && ./deploy.sh`
 
 ### Services
 
