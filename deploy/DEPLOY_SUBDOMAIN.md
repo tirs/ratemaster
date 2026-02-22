@@ -30,23 +30,30 @@ The repo includes `.env`. Verify `JWT_SECRET` is set.
 
 ## 3. Nginx + SSL
 
-You have per-subdomain certs (flow, formforge, nba). Get one for ratemaster, then enable the full config:
+**Main nginx config lives in `/opt/flowtasks`.** Add the ratemaster block there.
 
-```bash
-cd ~/ratemaster
+1. **Get the cert first** (standalone – nginx must be stopped briefly):
+   ```bash
+   sudo systemctl stop nginx
+   sudo certbot certonly --standalone -d ratemaster.flowtasks.io
+   sudo systemctl start nginx
+   ```
 
-# 1. Bootstrap (HTTP only) - nginx won't start without the cert, so use this first
-sudo cp deploy/nginx-ratemaster-bootstrap.conf /etc/nginx/sites-available/ratemaster
-sudo ln -sf /etc/nginx/sites-available/ratemaster /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+2. **Add ratemaster to the flowtasks nginx config:**
+   - Open the main nginx config in `/opt/flowtasks` (e.g. the file used for flow-flowtasks)
+   - Append the contents of `~/ratemaster/deploy/nginx-ratemaster-snippet.conf`
+   - Or copy the snippet: `cat ~/ratemaster/deploy/nginx-ratemaster-snippet.conf`
+   - Deploy/copy that config to nginx (however flowtasks does it – e.g. `deploy.sh`)
 
-# 2. Get cert
-sudo certbot certonly --nginx -d ratemaster.flowtasks.io
+3. **Remove the separate ratemaster site** (if you added it earlier):
+   ```bash
+   sudo rm /etc/nginx/sites-enabled/ratemaster
+   ```
 
-# 3. Switch to full config with SSL
-sudo cp deploy/nginx-ratemaster.conf /etc/nginx/sites-available/ratemaster
-sudo nginx -t && sudo systemctl reload nginx
-```
+4. **Test and reload:**
+   ```bash
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
 
 ## 4. Docker Compose (Bind to Localhost)
 
