@@ -1,5 +1,4 @@
-# Environment and secrets
-.env
+# Environment (private repo: .env is committed for VPS deployment)
 .env.local
 .env.*.local
 
