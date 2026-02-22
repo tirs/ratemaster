@@ -1,6 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+function formatRunDateTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 import { api } from "@/lib/api-client";
 import type { PropertyResponse } from "@/lib/api-client";
 
@@ -134,6 +145,18 @@ export default function EnginesPage() {
       setSelectedRun(res.data);
       setSelectedIds(new Set());
     }
+  }
+
+  async function handleDeleteRun(runId: string) {
+    setDeletingRunId(runId);
+    const res = await api.deleteEngineRun(runId);
+    setDeletingRunId(null);
+    if (res.error) {
+      setError(res.error.error);
+      return;
+    }
+    if (selectedRun?.run_id === runId) setSelectedRun(null);
+    loadRuns();
   }
 
   async function markApplied(recId: string) {

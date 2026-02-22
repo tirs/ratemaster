@@ -29,7 +29,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const { isAuthenticated, logout } = useAuth();
 
-  const [orgs, setOrgs] = useState<Array<{ id: string; name: string; logo_url: string | null }>>([]);
+  const [orgs, setOrgs] = useState<Array<{ id: string; name: string; logo_url?: string | null }>>([]);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/");
@@ -37,7 +37,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (isAuthenticated) {
-      api.listOrganizations().then((r) => r.data && setOrgs(r.data));
+      api.listOrganizations().then((r) => r.data && setOrgs(r.data as Array<{ id: string; name: string; logo_url?: string | null }>));
     }
   }, [isAuthenticated]);
 
