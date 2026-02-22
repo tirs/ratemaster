@@ -11,7 +11,7 @@ Deploy RateMaster to a VPS (Ubuntu/Debian) using Docker Compose.
 
 ```bash
 # Clone the repo
-git clone https://github.com/tirs/ratemaster.git
+git clone git@github.com:tirs/ratemaster.git
 cd ratemaster
 
 # Create .env from template (required before first run)

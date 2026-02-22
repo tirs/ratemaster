@@ -30,7 +30,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "30080:30080"
+      - "127.0.0.1:30080:30080"
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ratemaster
       REDIS_URL: redis://redis:6379/0
@@ -112,7 +112,7 @@ services:
       args:
         NEXT_PUBLIC_API_BACKEND: ""
     ports:
-      - "30000:30000"
+      - "127.0.0.1:30000:30000"
     environment:
       API_BACKEND: http://backend:30080
     depends_on:

@@ -31,7 +31,8 @@ docker compose up --build -d
 # OpenAPI: http://localhost:30080/docs
 ```
 
-For VPS deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
+For VPS deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).  
+For subdomain setup (e.g. ratemaster.flowtasks.io with Nginx + Cloudflare), see [deploy/DEPLOY_SUBDOMAIN.md](deploy/DEPLOY_SUBDOMAIN.md).
 
 ### Services
 
