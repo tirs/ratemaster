@@ -1,0 +1,124 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ratemaster
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "30080:30080"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ratemaster
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-min-32-chars-for-production}
+      MARKET_REFRESH_MINUTES: ${MARKET_REFRESH_MINUTES:-30}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      API_CACHE_TTL_SECONDS: ${API_CACHE_TTL_SECONDS:-60}
+      UPLOADS_DIR: /app/uploads
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:30080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    entrypoint: ["/app/scripts/docker-entrypoint.sh"]
+    command: ["echo", "Migrations complete"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ratemaster
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-min-32-chars-for-production}
+    profiles:
+      - migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["celery", "-A", "celery_worker", "worker", "-l", "info", "--pool=solo"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ratemaster
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-min-32-chars-for-production}
+      MARKET_REFRESH_MINUTES: ${MARKET_REFRESH_MINUTES:-30}
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["celery", "-A", "celery_worker", "beat", "-l", "info"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ratemaster
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-min-32-chars-for-production}
+      MARKET_REFRESH_MINUTES: ${MARKET_REFRESH_MINUTES:-30}
+    depends_on:
+      celery_worker:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BACKEND: ""
+    ports:
+      - "30000:30000"
+    environment:
+      API_BACKEND: http://backend:30080
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:
