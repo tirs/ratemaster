@@ -28,8 +28,10 @@ docker compose up --build -d
 
 # App: http://localhost:30000
 # API: http://localhost:30080
-# OpenAPI: http://localhost:30080/openapi.json
+# OpenAPI: http://localhost:30080/docs
 ```
+
+For VPS deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Services
 
