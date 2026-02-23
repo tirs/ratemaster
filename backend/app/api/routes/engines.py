@@ -125,7 +125,7 @@ async def get_engine_run(
             status=run.status,
             confidence=run.confidence,
             created_at=run.created_at.isoformat(),
-            recommendations=None,
+            recommendations=recommendations,
             calendar=calendar,
         )
 

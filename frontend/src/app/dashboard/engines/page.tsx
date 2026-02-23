@@ -196,7 +196,7 @@ export default function EnginesPage() {
           Engine A (0-30 days) tactical. Engine B (31-365 days) strategic.
         </p>
         <p className="text-slate-500 text-sm mt-2 max-w-2xl">
-          Engine A outputs actionable BAR recommendations you can apply in your PMS — the &quot;Applied&quot; column tracks which ones you used. Engine B outputs Floor/Target/Stretch bands for planning and budgeting; these are guidelines, not per-date actions, so there is no Applied column.
+          Engine A outputs actionable BAR recommendations for 0–30 days. Engine B outputs Floor/Target/Stretch for 31–365 days; the 31–90 day window also has an Applied column so you can track which strategic rates you used.
         </p>
       </div>
 
@@ -335,7 +335,175 @@ export default function EnginesPage() {
             {properties.find((p) => p.id === selectedRun.property_id)?.name ?? "Unknown property"} – {selectedRun.engine_type === "engine_a" ? "Engine A" : "Engine B"}
           </h3>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
-            {selectedRun.engine_type === "engine_b" && selectedRun.calendar ? (
+            {selectedRun.engine_type === "engine_b" && selectedRun.recommendations && selectedRun.recommendations.length > 0 ? (
+              <>
+                <p className="text-slate-500 text-sm mb-2">
+                  Strategic recommendations (31–90 days) — apply in your PMS and mark below.
+                </p>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <label htmlFor="applied-filter-b" className="flex items-center gap-2 text-sm text-slate-400">
+                    Filter:
+                    <select
+                      id="applied-filter-b"
+                      value={appliedFilter}
+                      onChange={(e) => {
+                        setAppliedFilter(e.target.value as "all" | "applied" | "not_applied");
+                        setSelectedIds(new Set());
+                      }}
+                      className="glass-input py-1.5 px-2 text-slate-200"
+                    >
+                      <option value="all">All</option>
+                      <option value="applied">Applied</option>
+                      <option value="not_applied">Not applied</option>
+                    </select>
+                  </label>
+                  {canApprove && selectedIds.size > 0 && (
+                    <button
+                      onClick={applySelected}
+                      disabled={applying}
+                      className="glass-button glass-button-primary text-sm py-1.5 px-3"
+                    >
+                      {applying ? "Applying…" : `Apply selected (${selectedIds.size})`}
+                    </button>
+                  )}
+                  {!canApprove && (
+                    <span className="text-slate-500 text-sm">Analyst: view only</span>
+                  )}
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-2 text-slate-400 w-10">
+                        {canApprove && notAppliedRecs.length > 0 ? (
+                          <input
+                            type="checkbox"
+                            checked={allNotAppliedSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedIds(new Set(notAppliedRecs.map((r) => r.id)));
+                              } else {
+                                setSelectedIds(new Set());
+                              }
+                            }}
+                            className="rounded"
+                            aria-label="Select all not applied"
+                          />
+                        ) : null}
+                      </th>
+                      <th className="text-left py-2 text-slate-400">Stay Date</th>
+                      <th className="text-left py-2 text-slate-400">Target</th>
+                      <th className="text-left py-2 text-slate-400">Current</th>
+                      <th className="text-left py-2 text-slate-400">Delta</th>
+                      <th className="text-left py-2 text-slate-400">Occupancy</th>
+                      <th className="text-left py-2 text-slate-400">Confidence</th>
+                      <th className="text-left py-2 text-slate-400">Applied</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRecs.map((rec, i) => (
+                      <tr key={rec.id} className="border-b border-white/5">
+                        <td className="py-2 w-10">
+                          {rec.applied ? (
+                            <span className="text-slate-600">—</span>
+                          ) : canApprove ? (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(rec.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedIds((s) => new Set([...s, rec.id]));
+                                } else {
+                                  setSelectedIds((s) => {
+                                    const next = new Set(s);
+                                    next.delete(rec.id);
+                                    return next;
+                                  });
+                                }
+                              }}
+                              className="rounded"
+                              aria-label={`Select ${rec.stay_date}`}
+                            />
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-slate-300">{rec.stay_date}</td>
+                        <td className="py-2 text-violet-300">
+                          {rec.suggested_bar != null ? `$${rec.suggested_bar}` : "-"}
+                        </td>
+                        <td className="py-2 text-slate-400">
+                          {rec.current_bar != null ? `$${rec.current_bar}` : "-"}
+                        </td>
+                        <td className="py-2 text-emerald-300">
+                          {rec.delta_dollars != null
+                            ? (rec.delta_dollars >= 0 ? `+$${rec.delta_dollars}` : `$${rec.delta_dollars}`)
+                            : "-"}
+                        </td>
+                        <td className="py-2 text-slate-400">
+                          {rec.occupancy_projection_low != null && rec.occupancy_projection_high != null
+                            ? `${rec.occupancy_projection_low}–${rec.occupancy_projection_high}%`
+                            : rec.occupancy_projection != null
+                              ? `${rec.occupancy_projection}%`
+                              : "-"}
+                        </td>
+                        <td className="py-2 text-slate-400">
+                          {rec.confidence ?? "-"}
+                        </td>
+                        <td className="py-2">
+                          {rec.applied ? (
+                            <span className="text-emerald-400">Yes</span>
+                          ) : canApprove ? (
+                            <button
+                              onClick={() => markApplied(rec.id)}
+                              className="text-cyan-400 hover:underline"
+                            >
+                              Mark applied
+                            </button>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {selectedRun.calendar && selectedRun.calendar.length > 0 && (
+                  <details className="mt-6">
+                    <summary className="text-sm text-slate-400 cursor-pointer hover:text-slate-300">
+                      Full calendar (31–365 days) — {selectedRun.calendar.length} dates
+                    </summary>
+                    <table className="w-full text-sm mt-2">
+                      <thead>
+                        <tr className="border-b border-white/10">
+                          <th className="text-left py-2 text-slate-400">Stay Date</th>
+                          <th className="text-left py-2 text-slate-400">Floor</th>
+                          <th className="text-left py-2 text-slate-400">Target</th>
+                          <th className="text-left py-2 text-slate-400">Stretch</th>
+                          <th className="text-left py-2 text-slate-400">Confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedRun.calendar.map((c, i) => (
+                          <tr key={i} className="border-b border-white/5">
+                            <td className="py-2 text-slate-300">{c.stay_date}</td>
+                            <td className="py-2 text-slate-400">
+                              {c.floor != null ? `$${c.floor.toFixed(0)}` : "-"}
+                            </td>
+                            <td className="py-2 text-violet-300">
+                              {c.target != null ? `$${c.target.toFixed(0)}` : "-"}
+                            </td>
+                            <td className="py-2 text-cyan-300">
+                              {c.stretch != null ? `$${c.stretch.toFixed(0)}` : "-"}
+                            </td>
+                            <td className="py-2 text-slate-400">{c.confidence ?? "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                )}
+              </>
+            ) : selectedRun.engine_type === "engine_b" && selectedRun.calendar ? (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 sticky top-0 bg-slate-900/95">
