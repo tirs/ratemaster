@@ -81,6 +81,9 @@ async function proxy(
       body: body || undefined,
     });
     const data = await res.text();
+    if (res.status >= 400) {
+      console.error(`API proxy ${method} ${backendUrl} -> ${res.status}`, data.slice(0, 500));
+    }
     return new NextResponse(data, {
       status: res.status,
       headers: {
