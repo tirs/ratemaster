@@ -110,7 +110,7 @@ services:
       args:
         NEXT_PUBLIC_API_BACKEND: ""
     ports:
-      - "127.0.0.1:30000:30000"
+      - "30000:30000"  # Must bind to 0.0.0.0 so flowtasks nginx (host.docker.internal) can reach it
     environment:
       API_BACKEND: http://backend:30080
     depends_on:
