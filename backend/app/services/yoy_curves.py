@@ -114,16 +114,18 @@ def compute_yoy_curves(db: Session, property_id: str) -> int:
 
 
 def get_yoy_multiplier(
-    db: Session, property_id: str, stay_date: str
+    db: Session, property_id: str, stay_date: str, days_until_stay: int | None = None
 ) -> float:
-    """Get combined YoY multiplier for stay_date (month + dow)."""
+    """
+    Get combined YoY multiplier for stay_date (month + dow, optionally lead_time).
+    When days_until_stay is provided, lead_time curve is included for Engine B.
+    """
     try:
         dt = datetime.strptime(stay_date, "%Y-%m-%d")
     except (ValueError, TypeError):
         return 1.0
 
-    month_mult = 1.0
-    dow_mult = 1.0
+    components: list[float] = []
 
     result = db.execute(
         select(YoYCurve).where(
@@ -133,8 +135,7 @@ def get_yoy_multiplier(
         )
     )
     c = result.scalar_one_or_none()
-    if c:
-        month_mult = float(c.multiplier)
+    components.append(float(c.multiplier) if c else 1.0)
 
     result = db.execute(
         select(YoYCurve).where(
@@ -144,7 +145,22 @@ def get_yoy_multiplier(
         )
     )
     c = result.scalar_one_or_none()
-    if c:
-        dow_mult = float(c.multiplier)
+    components.append(float(c.multiplier) if c else 1.0)
 
-    return (month_mult + dow_mult) / 2.0 if (month_mult != 1.0 or dow_mult != 1.0) else 1.0
+    if days_until_stay is not None:
+        bucket = _lead_time_bucket(days_until_stay)
+        if bucket:
+            result = db.execute(
+                select(YoYCurve).where(
+                    YoYCurve.property_id == property_id,
+                    YoYCurve.curve_type == "lead_time",
+                    YoYCurve.bucket == bucket,
+                )
+            )
+            c = result.scalar_one_or_none()
+            if c:
+                components.append(float(c.multiplier))
+
+    if all(m == 1.0 for m in components):
+        return 1.0
+    return sum(components) / len(components)

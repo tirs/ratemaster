@@ -405,17 +405,35 @@ def run_engine_a(self, property_id: str) -> dict:
         db.close()
 
 
+def _engine_b_floor_stretch_bands(days_until_stay: int) -> tuple[float, float]:
+    """
+    Dynamic floor/stretch bands by lead time. Wider when further out.
+    31-60d: 0.88–1.12, 61-90d: 0.85–1.15, 91-180d: 0.82–1.18, 181+: 0.80–1.20
+    """
+    if days_until_stay <= 60:
+        return 0.88, 1.12
+    if days_until_stay <= 90:
+        return 0.85, 1.15
+    if days_until_stay <= 180:
+        return 0.82, 1.18
+    return 0.80, 1.20
+
+
 @celery_app.task(bind=True)
 def run_engine_b(self, property_id: str) -> dict:
     """
     Engine B - Strategic (31-365 days).
-    Heuristic: floor/target/stretch based on seasonality.
+    Seasonality-based floor/target/stretch with YoY curves, events, property constraints.
     """
     run_id = str(uuid.uuid4())
     self.update_state(state="PROGRESS", meta={"run_id": run_id, "step": "loading_data"})
 
     db = get_sync_session()
     try:
+        from app.models.engine import EngineRun, Recommendation
+        from app.models.engine_b_calendar import EngineBCalendar
+        from app.models.organization import Property
+
         snapshot_result = db.execute(
             select(DataSnapshot).where(
                 DataSnapshot.property_id == property_id,
@@ -437,7 +455,7 @@ def run_engine_b(self, property_id: str) -> dict:
             / max(1, sum(1 for r in rows if r.adr))
         ) if any(r.adr for r in rows) else 100.0
 
-        predictor = get_predictor_for_property(db, property_id)
+        predictor = get_predictor_for_property(db, property_id, model_name="engine_b_heuristic")
         reg = get_active_model(db, "engine_b_heuristic", property_id=property_id)
         if not reg:
             reg = get_active_model(db, "engine_b_heuristic", property_id=None)
@@ -445,11 +463,22 @@ def run_engine_b(self, property_id: str) -> dict:
             db, "engine_b_heuristic", "Seasonality-based floor/target/stretch"
         )
 
+        prop_result = db.execute(select(Property).where(Property.id == property_id))
+        prop = prop_result.scalar_one_or_none()
+        min_bar = float(prop.min_bar) if prop and prop.min_bar else None
+        max_bar = float(prop.max_bar) if prop and prop.max_bar else None
+        blackout = set(prop.blackout_dates or []) if prop else set()
+        dow_rules = prop.dow_rules or {} if prop else {}
+
         today = date.today()
         calendar = []
         for d in range(31, 366):
             stay_d = today + timedelta(days=d)
             stay_str = stay_d.isoformat()
+            if stay_str in blackout:
+                continue
+
+            days_until_stay = d
             features = compute_features(
                 db, property_id, run_id, stay_str, snapshot, rows, None
             )
@@ -467,29 +496,61 @@ def run_engine_b(self, property_id: str) -> dict:
             )
             out = predictor.predict(inp)
             target = out.suggested_bar
-            floor = round(target * 0.85, 2)
-            stretch = round(target * 1.15, 2)
 
-            yoy_mult = get_yoy_multiplier(db, property_id, stay_str)
+            band_lo, band_hi = _engine_b_floor_stretch_bands(days_until_stay)
+            floor = round(target * band_lo, 2)
+            stretch = round(target * band_hi, 2)
+
+            yoy_mult = get_yoy_multiplier(db, property_id, stay_str, days_until_stay=days_until_stay)
             event_mult = get_event_multiplier(db, property_id, stay_str)
             floor = round(floor * yoy_mult * event_mult, 2)
             target = round(target * yoy_mult * event_mult, 2)
             stretch = round(stretch * yoy_mult * event_mult, 2)
+
+            if min_bar is not None:
+                floor = max(floor, min_bar)
+                target = max(target, min_bar)
+                stretch = max(stretch, min_bar)
+            if max_bar is not None:
+                floor = min(floor, max_bar)
+                target = min(target, max_bar)
+                stretch = min(stretch, max_bar)
+
+            dow_mult = 1.0
+            dow_key = str(stay_d.weekday())
+            if dow_key in dow_rules and isinstance(dow_rules[dow_key], (int, float)):
+                dow_mult = float(dow_rules[dow_key])
+            elif "weekend_premium_pct" in dow_rules and stay_d.weekday() >= 5:
+                pct = float(dow_rules.get("weekend_premium_pct", 0) or 0)
+                dow_mult = 1.0 + pct / 100.0
+            if dow_mult != 1.0:
+                floor = round(floor * dow_mult, 2)
+                target = round(target * dow_mult, 2)
+                stretch = round(stretch * dow_mult, 2)
+
+            hist_occ = features.get("historical_occupancy")
+            occ_mid = float(hist_occ) if hist_occ is not None else 75.0
+            occ_band = 12.0 if hist_occ is None else 8.0
+            occ_low = max(0.0, round(occ_mid - occ_band, 2))
+            occ_high = min(100.0, round(occ_mid + occ_band, 2))
+
+            why_bullets = list(out.why_drivers)
+            if yoy_mult != 1.0:
+                why_bullets.append("yoy_curves")
+            if event_mult != 1.0:
+                why_bullets.append("events")
 
             calendar.append({
                 "stay_date": stay_str,
                 "floor": floor,
                 "target": target,
                 "stretch": stretch,
-                "confidence": snapshot.data_health_score or 60,
+                "occupancy_forecast_low": occ_low,
+                "occupancy_forecast_high": occ_high,
+                "confidence": out.confidence or snapshot.data_health_score or 60,
+                "why_bullets": why_bullets,
             })
 
-        from app.models.engine import EngineRun
-        from app.models.engine_b_calendar import EngineBCalendar
-        from app.models.organization import Property
-
-        prop_result = db.execute(select(Property).where(Property.id == property_id))
-        prop = prop_result.scalar_one_or_none()
         org_id = prop.organization_id if prop else None
 
         engine_run = EngineRun(
@@ -501,7 +562,7 @@ def run_engine_b(self, property_id: str) -> dict:
             inputs={"property_id": property_id},
             outputs={"calendar_count": len(calendar), "model_version": model_version},
             confidence=snapshot.data_health_score,
-            why_drivers=["seasonality", "yoy_curves"],
+            why_drivers=["seasonality", "yoy_curves", "events"],
         )
         db.add(engine_run)
         db.flush()
@@ -514,12 +575,46 @@ def run_engine_b(self, property_id: str) -> dict:
                 floor=c["floor"],
                 target=c["target"],
                 stretch=c["stretch"],
-                occupancy_forecast_low=70.0,
-                occupancy_forecast_high=85.0,
+                occupancy_forecast_low=c["occupancy_forecast_low"],
+                occupancy_forecast_high=c["occupancy_forecast_high"],
                 confidence=c["confidence"],
-                why_bullets=["seasonality", "yoy_curves"],
+                why_bullets=c["why_bullets"],
             )
             db.add(cal_entry)
+
+        for c in calendar:
+            stay_str = c["stay_date"]
+            try:
+                stay_d = date.fromisoformat(stay_str)
+            except (ValueError, TypeError):
+                continue
+            days_out = (stay_d - today).days
+            if days_out < 31 or days_out > 90:
+                continue
+            row_for_date = next((r for r in rows if r.stay_date == stay_str), None)
+            current_bar = float(row_for_date.adr) if row_for_date and row_for_date.adr else adr_avg
+            target_bar = c["target"]
+            delta = target_bar - current_bar
+            delta_pct = (delta / current_bar * 100) if current_bar else 0
+            rec_obj = Recommendation(
+                id=str(uuid.uuid4()),
+                engine_run_id=engine_run.id,
+                stay_date=stay_str,
+                suggested_bar=target_bar,
+                conservative_bar=c["floor"],
+                balanced_bar=target_bar,
+                aggressive_bar=c["stretch"],
+                current_bar=current_bar,
+                delta_dollars=round(delta, 2),
+                delta_pct=round(delta_pct, 2),
+                occupancy_projection=(c["occupancy_forecast_low"] + c["occupancy_forecast_high"]) / 2,
+                occupancy_projection_low=c["occupancy_forecast_low"],
+                occupancy_projection_high=c["occupancy_forecast_high"],
+                confidence=c["confidence"],
+                why_bullets=c["why_bullets"],
+                applied=False,
+            )
+            db.add(rec_obj)
 
         if org_id:
             alert = Alert(
