@@ -12,9 +12,11 @@ RUN npm ci
 # Copy source
 COPY . .
 
-# Build-time env (empty = use relative /api/v1 for Docker proxy)
+# Build-time env: API_BACKEND for server-side proxy (baked in at build)
 ARG NEXT_PUBLIC_API_BACKEND=
+ARG API_BACKEND=http://backend:30080
 ENV NEXT_PUBLIC_API_BACKEND=$NEXT_PUBLIC_API_BACKEND
+ENV API_BACKEND=$API_BACKEND
 
 # Build
 RUN npm run build
