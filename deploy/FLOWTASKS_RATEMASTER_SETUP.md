@@ -103,8 +103,7 @@ git add -A && git commit -m "Your message" && git push origin main
 On the VPS:
 ```bash
 cd ~/ratemaster
-chmod +x deploy.sh   # first time only
-./deploy.sh
+bash deploy.sh
 # Or manually:
 git pull origin main
 docker compose up --build -d

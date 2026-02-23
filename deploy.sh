@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy RateMaster on VPS - run from ~/ratemaster
+# Deploy RateMaster on VPS - run: bash deploy.sh  (or chmod +x deploy.sh && ./deploy.sh)
 set -e
 cd "$(dirname "$0")"
 echo "Pulling latest..."
