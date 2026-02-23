@@ -411,7 +411,11 @@ export default function EnginesPage() {
                               checked={selectedIds.has(rec.id)}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setSelectedIds((s) => new Set([...s, rec.id]));
+                                  setSelectedIds((s) => {
+                                    const next = new Set(s);
+                                    next.add(rec.id);
+                                    return next;
+                                  });
                                 } else {
                                   setSelectedIds((s) => {
                                     const next = new Set(s);
