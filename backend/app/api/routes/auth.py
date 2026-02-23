@@ -1,5 +1,8 @@
 """Auth API routes."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,24 +21,30 @@ async def signup(
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """Create new user account and return JWT."""
-    result = await db.execute(select(User).where(User.email == body.email))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+    try:
+        result = await db.execute(select(User).where(User.email == body.email))
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered",
+            )
+        user = User(
+            email=body.email,
+            hashed_password=hash_password(body.password),
         )
-    user = User(
-        email=body.email,
-        hashed_password=hash_password(body.password),
-    )
-    db.add(user)
-    await db.flush()
-    token = create_access_token(subject=user.id)
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        expires_in=settings.jwt_expire_minutes * 60,
-    )
+        db.add(user)
+        await db.flush()
+        token = create_access_token(subject=user.id)
+        return TokenResponse(
+            access_token=token,
+            token_type="bearer",
+            expires_in=settings.jwt_expire_minutes * 60,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Signup failed: %s", e)
+        raise
 
 
 @router.post("/login", response_model=TokenResponse)
