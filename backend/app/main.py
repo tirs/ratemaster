@@ -1,7 +1,10 @@
 """RateMaster FastAPI application."""
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -90,6 +93,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:30000",
         "http://127.0.0.1:30000",
+        "https://ratemaster.flowtasks.io",
+        "http://ratemaster.flowtasks.io",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -104,6 +109,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 @app.exception_handler(Exception)
 async def generic_exception_handler(request, exc):
     """Catch-all for unhandled exceptions."""
+    logger.exception("Unhandled exception: %s", exc)
     return error_envelope_response(
         status_code=500,
         error="Internal server error",

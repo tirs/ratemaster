@@ -24,11 +24,12 @@ def create_access_token(subject: str) -> str:
         minutes=settings.jwt_expire_minutes
     )
     payload = {"sub": subject, "exp": expire}
-    return jwt.encode(
+    token = jwt.encode(
         payload,
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
+    return str(token) if not isinstance(token, str) else token
 
 
 def decode_token(token: str) -> str | None:
